@@ -3,8 +3,8 @@ My first kaggle challenge where i finish with a bronze medal
 
 I will upload my training + inference script soon
 
-For the short story : I got a bronze medal in the public LB and miserably forget to unselect my first attempts so i miss the silver medal in private LB (my best attempt was 0,61724 = 167th place)
-It was my first kaggle competition, I learn so many things thanks to the forum and participants. Next time I will choose my submissions correctly :)
+"" For the short story : I got a bronze medal in the public LB and miserably forget to unselect my first attempts so i miss the silver medal in private LB (my best attempt was 0,61724 = 167th place)
+It was my first kaggle competition, I learn so many things thanks to the forum and participants. Next time I will choose my submissions correctly :) ""
 
 # CSIRO Image2Biomass Prediction:
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
@@ -52,7 +52,7 @@ Used as a secondary model (~12% ensemble weight) to capture semantic features.
 
 ---
 
-## 🚀 Inference & Post-Processing
+## Inference & Post-Processing
 
 The inference pipeline is designed for robustness and physical consistency.
 

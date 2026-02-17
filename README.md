@@ -33,14 +33,18 @@ My approach relies on a **dual-stream ensemble** leveraging Vision Transformers 
 
 ### 2. Model 1: DINOv3 + Mamba Fusion
 This is the primary regression model (~85% ensemble weight).
-* **Backbone:** `vit_huge_plus_patch16_dinov3` (Frozen backbone with gradient checkpointing).
+* **Backbone:** `vit_huge_plus_patch16_dinov3` (Frozen for first 2 epochs, then fine-tuned with gradient checkpointing).
 * **Neck - Mamba Fusion:** A **State Space Model (SSM)** block is used to fuse tokens from the Left and Right image crops. This allows the model to capture global context across the entire panoramic view without quadratic complexity.
 * **Heads:** Separate regression heads for *Green*, *Clover*, and *Dead* components.
 
 ### 3. Model 2: SigLIP Semantic Extractor
 Used as a secondary model (~15% ensemble weight) to capture semantic features.
-* **Backbone:** `google/siglip-so400m-patch14-384`.
-* **Method:** Extracts embeddings and semantic probabilities to refine predictions, particularly for distinguishing clover from grass.
+* **Backbone:** `google/siglip-so400m-patch14-384` (frozen, used as feature extractor).
+* **Method:** 
+  1. Extract image embeddings (1152-dim) from frozen SigLIP
+  2. Generate semantic features via text probing (green/dead/clover concepts)
+  3. Apply feature engineering (PCA, PLS, GMM)
+  4. Train an ensemble of Gradient Boosting models (CatBoost, LightGBM, HistGB, GB)
 
 ### 4. Training Strategy
 * **Loss Function:** `HuberLoss` (SmoothL1) with `beta=5.0` to be robust against outliers.
@@ -54,11 +58,11 @@ Used as a secondary model (~15% ensemble weight) to capture semantic features.
 The inference pipeline is designed for robustness and physical consistency.
 
 ### 1. Test-Time Augmentation (TTA)
-We apply **4x TTA** during inference:
+Apply **4x TTA** during inference:
 * Original
 * Horizontal Flip
 * Vertical Flip
-* Rotated Views
+* Both Flips (H+V)
 Predictions are averaged across views to reduce variance.
 After the challenge, many participants noticed that TTA wasn't useful, I did notice that TTA doesn't change anything in the public score but I prefer to keep it in case it impacts the private LB
 
@@ -72,3 +76,30 @@ The raw model outputs are not guaranteed to sum up correctly. I implemented an *
 # Constraints enforced:
 # 1. Dry_Green + Dry_Clover = GDM
 # 2. GDM + Dry_Dead = Dry_Total
+```
+
+### Repository Structure
+image2biomass/
+│
+├── README.md                 # Documentation du projet
+├── requirements.txt          # Dépendances Python
+│
+├── Training
+│   ├── train_dinov3.py          # Entraînement DINOv3 + Mamba Fusion (~85% poids)
+│   └── train_siglip.py          # Entraînement SigLIP + Gradient Boosting (~15% poids)
+│
+├── Inference
+    └── inference.py             # Inférence ensemble avec TTA et post-processing
+  
+## Usage
+### Training
+```bash
+# Train DINOv3 model (5-fold CV)
+python train_dinov3.py
+
+# Train SigLIP model
+python train_siglip.py### Usage
+```
+### Inférence
+```bash
+python inference.py

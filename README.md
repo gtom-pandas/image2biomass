@@ -1,8 +1,6 @@
 # Image2Biomass
 My first kaggle challenge where i finish with a bronze medal
 
-I will upload my training + inference script soon
-
 "" For the short story : I got a bronze medal in the public LB and miserably forget to unselect my first attempts so i miss the silver medal in private LB (my best attempt was 0,61724 = 167th place)
 It was my first kaggle competition, I learn so many things thanks to the forum and participants. Next time I will choose my submissions correctly :) ""
 
@@ -25,6 +23,7 @@ The goal was to estimate pasture biomass (green, dead, clover, and total) from i
 
 ## Solution Architecture
 
+Although it was my first kaggle competition, I've tried multiple architectures and techniques (94 submissions in 2 months) to obtain the most reliable results, I detail my improved submission below:
 My approach relies on a **dual-stream ensemble** leveraging Vision Transformers (ViT) and Mamba (SSM) for feature fusion.
 
 ### 1. Preprocessing Pipeline

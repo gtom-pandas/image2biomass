@@ -79,27 +79,38 @@ The raw model outputs are not guaranteed to sum up correctly. I implemented an *
 ```
 
 ### Repository Structure
+```
 image2biomass/
 │
-├── README.md                 # Documentation du projet
-├── requirements.txt          # Dépendances Python
+├── README.md           # Documentation du projet
+├── requirements.txt    # Dépendances Python
 │
-├── Training
-│   ├── train_dinov3.py          # Entraînement DINOv3 + Mamba Fusion (~85% poids)
-│   └── train_siglip.py          # Entraînement SigLIP + Gradient Boosting (~15% poids)
+├── train_dinov3.py     # Entraînement DINOv3 + Mamba Fusion (~85% poids)
+├── train_siglip.py     # Entraînement SigLIP + Gradient Boosting (~15% poids)
 │
-├── Inference
-    └── inference.py             # Inférence ensemble avec TTA et post-processing
+└── inference.py        # Inférence ensemble avec TTA et post-processing
+```
   
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Usage
+
 ### Training
+
 ```bash
 # Train DINOv3 model (5-fold CV)
 python train_dinov3.py
 
 # Train SigLIP model
-python train_siglip.py### Usage
+python train_siglip.py
 ```
-### Inférence
+
+### Inference
+
 ```bash
 python inference.py
+```

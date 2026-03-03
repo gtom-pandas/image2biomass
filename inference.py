@@ -1,7 +1,7 @@
 """
-CSIRO Image2Biomass - Inference Script
+CSIRO Image2Biomass - Inference Script   
 =======================================
-Ensemble inference with DINOv3 and SigLIP models.
+Ensemble inference with DINOv3 (FiLM fusion) and SigLIP models.
 Includes TTA and physics-constrained post-processing.
 
 Author: gtom-pandas
@@ -39,7 +39,7 @@ class CFG:
     OUTPUT_DIR = './'
     
     # Model
-    MODEL_NAME = 'vit_huge_plus_patch16_dinov3.lvd1689m'
+    MODEL_NAME = 'vit_large_patch16_dinov3_qkvb'
     
     # Inference
     IMG_SIZE = 512
@@ -61,73 +61,100 @@ class CFG:
 # =============================================================================
 # MODEL DEFINITION (must match training)
 # ======================================
-class LocalMambaBlock(nn.Module):
-    """Lightweight Mamba-style block for token mixing."""
-    
-    def __init__(self, dim: int, kernel_size: int = 5, dropout: float = 0.0):
+class FiLM(nn.Module):
+    """Feature-wise Linear Modulation for dual-stream fusion."""
+    def __init__(self, feat_dim: int):
         super().__init__()
-        self.norm = nn.LayerNorm(dim)
-        self.dwconv = nn.Conv1d(dim, dim, kernel_size=kernel_size,
-                                 padding=kernel_size // 2, groups=dim)
-        self.gate = nn.Linear(dim, dim)
-        self.proj = nn.Linear(dim, dim)
-        self.drop = nn.Dropout(dropout)
-    
-    def forward(self, x):
-        shortcut = x
-        x = self.norm(x)
-        g = torch.sigmoid(self.gate(x))
-        x = x * g
-        x = x.transpose(1, 2)
-        x = self.dwconv(x)
-        x = x.transpose(1, 2)
-        x = self.proj(x)
-        x = self.drop(x)
-        return shortcut + x
+        self.mlp = nn.Sequential(
+            nn.Linear(feat_dim, feat_dim // 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(feat_dim // 2, feat_dim * 2)
+        )
+    def forward(self, context: torch.Tensor):
+        gamma_beta = self.mlp(context)
+        return torch.chunk(gamma_beta, 2, dim=1)  # γ, β
 
 
 class BiomassModel(nn.Module):
-    """DINOv3 + Mamba Fusion Model."""
-    
-    def __init__(self, model_name: str, pretrained: bool = False):
+    """
+    DINOv3 + FiLM Fusion Model for biomass prediction.
+
+    Architecture:
+    - Dual-stream ViT backbone (vit_large_patch16_dinov3_qkvb)
+      processes left and right image halves independently
+    - FiLM module modulates both streams from their mean context
+    - Concatenation of modulated features → (B, 2*nf)
+    - Three regression heads for Green, Clover, Dead components
+    - GDM and Total derived from primary predictions
+    """
+    def __init__(self, model_name: str,
+                 pretrained: bool = True,
+                 backbone_path: str = None):
         super().__init__()
-        self.backbone = timm.create_model(model_name, pretrained=False, 
-                                           num_classes=0, global_pool='')
-        nf = self.backbone.num_features
-        
-        self.fusion = nn.Sequential(
-            LocalMambaBlock(nf, kernel_size=5, dropout=0.1),
-            LocalMambaBlock(nf, kernel_size=5, dropout=0.1)
-        )
-        
-        self.pool = nn.AdaptiveAvgPool1d(1)
-        
+        self.model_name = model_name
+        self.backbone_path = backbone_path
+
+        self.backbone = timm.create_model(
+            model_name, pretrained=False,
+            num_classes=0, global_pool='avg')   # → (B, nf)
+
+        if hasattr(self.backbone, 'set_grad_checkpointing') \
+                and CFG.DINO_GRAD_CHECKPOINTING:
+            self.backbone.set_grad_checkpointing(True)
+            print("Gradient Checkpointing enabled")
+
+        nf = self.backbone.num_features  # 1024
+
+        self.film = FiLM(nf)
+
         def make_head():
             return nn.Sequential(
-                nn.Linear(nf, nf // 2), nn.GELU(), nn.Dropout(0.2),
-                nn.Linear(nf // 2, 1), nn.Softplus()
+                nn.Linear(nf * 2, 8),
+                nn.ReLU(inplace=True),
+                nn.Dropout(0.2),
+                nn.Linear(8, 1),
+                nn.Softplus()
             )
-        
-        self.head_green = make_head()
+
+        self.head_green  = make_head()
         self.head_clover = make_head()
-        self.head_dead = make_head()
-    
-    def forward(self, left, right):
-        x_l = self.backbone(left)
-        x_r = self.backbone(right)
-        x_cat = torch.cat([x_l, x_r], dim=1)
-        x_fused = self.fusion(x_cat)
-        x_pool = self.pool(x_fused.transpose(1, 2)).flatten(1)
-        
-        green = self.head_green(x_pool)
-        clover = self.head_clover(x_pool)
-        dead = self.head_dead(x_pool)
-        gdm = green + clover
-        total = gdm + dead
-        
-        return total, gdm, green, clover, dead
+        self.head_dead   = make_head()
 
+        if pretrained:
+            self._load_pretrained()
 
+    def _load_pretrained(self):
+        try:
+            if self.backbone_path and os.path.exists(self.backbone_path):
+                print(f"Loading backbone from: {self.backbone_path}")
+                sd = torch.load(self.backbone_path, map_location='cpu')
+                if 'model'        in sd: sd = sd['model']
+                elif 'state_dict' in sd: sd = sd['state_dict']
+            else:
+                print("Downloading backbone weights from timm...")
+                sd = timm.create_model(
+                    self.model_name, pretrained=True,
+                    num_classes=0, global_pool='avg').state_dict()
+            self.backbone.load_state_dict(sd, strict=False)
+            print('Pretrained weights loaded')
+        except Exception as e:
+            print(f'Warning: pretrained load failed: {e}')
+
+    def forward(self, left: torch.Tensor,
+                right: torch.Tensor):
+        fl = self.backbone(left)               # (B, nf)
+        fr = self.backbone(right)              # (B, nf)
+        context = (fl + fr) / 2               # (B, nf)
+        gamma, beta = self.film(context)       # each (B, nf)
+        fl_mod = fl * (1 + gamma) + beta
+        fr_mod = fr * (1 + gamma) + beta
+        h = torch.cat([fl_mod, fr_mod], dim=1) # (B, 2*nf)
+        g = self.head_green(h)
+        c = self.head_clover(h)
+        d = self.head_dead(h)
+        gdm   = g + c
+        total = gdm + d
+        return total, gdm, g, c, d
 # =============================================================================
 # PREPROCESSING
 # =============

@@ -18,7 +18,7 @@ This repository contains the source code and documentation for my solution to th
 The goal was to estimate pasture biomass (green, dead, clover, and total) from images to help Australian farmers optimize grazing management. The challenge involved:
 * **Input:** High-resolution field images.
 * **Targets:** 5 continuous variables (`Dry_Green_g`, `Dry_Dead_g`, `Dry_Clover_g`, `GDM_g`, `Dry_Total_g`).
-* **Constraints:** Physical consistency (e.g., `Green + Clover = GDM`). In data, all samples from the state of "WA" have a dead value of 0. Therefore, I applied a post-processing step, setting \Dry_Dead_g` to 0 for samples identified as Western Australia`
+* **Constraints:** Physical consistency (e.g., `Green + Clover = GDM`). In data, all samples from the state of "WA" have a dead value of 0. Therefore, I applied a post-processing step, setting `Dry_Dead_g` to 0 for samples identified as Western Australia.
 ---
 
 ## Solution Architecture
@@ -67,7 +67,9 @@ Predictions are averaged across views to reduce variance.
 After the challenge, many participants noticed that TTA wasn't useful, I did notice that TTA doesn't change anything in the public score but I prefer to keep it in case it impacts the private LB
 
 ### 2. Weighted Ensemble
-The final prediction is a weighted average of the DINOv3 and SigLIP models.
+The final prediction is a weighted average of the DINOv3 and SigLIP models:
+* DINOv3: **88.5%** weight
+* SigLIP: **11.5%** weight
 * *Note:* For `Dry_Clover_g`, the system relies exclusively on the DINOv3 model, which showed superior detection capabilities for small details.
 
 ### 3. Physics-Constrained Post-Processing (Mass Balance)
@@ -82,13 +84,13 @@ The raw model outputs are not guaranteed to sum up correctly. I implemented an *
 ```
 image2biomass/
 │
-├── README.md           
-├── requirements.txt    
+├── README.md           # Project documentation
+├── requirements.txt    # Python dependencies
 │
-├── train_dinov3.py     
-├── train_siglip.py    
+├── train_dinov3.py     # DINOv3 + FiLM Fusion training (~88.5% ensemble weight)
+├── train_siglip.py     # SigLIP + Gradient Boosting training (~11.5% ensemble weight)
 │
-└── inference.py        
+└── inference.py        # Ensemble inference with TTA and post-processing
 ```
   
 ## Installation

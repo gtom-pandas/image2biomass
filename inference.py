@@ -49,8 +49,8 @@ class CFG:
     TTA_STEPS = 4  # Number of TTA views
     
     # Ensemble weights
-    W_DINOV3 = 0.85  # ~85% weight for DINOv3
-    W_SIGLIP = 0.15  # ~15% weight for SigLIP
+    W_DINOV3 = 0.885  # ~88.5% weight for DINOv3
+    W_SIGLIP = 0.115  # ~11.5% weight for SigLIP
     
     # Targets
     TARGET_COLS = ['Dry_Green_g', 'Dry_Dead_g', 'Dry_Clover_g', 'GDM_g', 'Dry_Total_g']
@@ -98,10 +98,7 @@ class BiomassModel(nn.Module):
             model_name, pretrained=False,
             num_classes=0, global_pool='avg')   # → (B, nf)
 
-        if hasattr(self.backbone, 'set_grad_checkpointing') \
-                and CFG.DINO_GRAD_CHECKPOINTING:
-            self.backbone.set_grad_checkpointing(True)
-            print("Gradient Checkpointing enabled")
+        # Gradient checkpointing not needed at inference time
 
         nf = self.backbone.num_features  # 1024
 
@@ -357,5 +354,56 @@ def ensemble_predictions(dinov3_preds, dinov3_filenames):
     print("\n" + "="*60)
     print("ENSEMBLE PREDICTIONS")
     print("="*60)
-    
-    
+
+    # Load SigLIP submission
+    if not os.path.exists(CFG.SIGLIP_SUBMISSION):
+        raise FileNotFoundError(f"SigLIP submission not found: {CFG.SIGLIP_SUBMISSION}")
+    siglip_df = pd.read_csv(CFG.SIGLIP_SUBMISSION)
+    siglip_df = siglip_df.sort_values('sample_id').reset_index(drop=True)
+
+    # Convert DINOv3 predictions to long-format DataFrame
+    # dinov3_preds columns: [Dry_Green_g, Dry_Dead_g, Dry_Clover_g, GDM_g, Dry_Total_g]
+    dino_df = pd.DataFrame(dinov3_preds, columns=CFG.TARGET_COLS)
+    dino_df['sample_id'] = [os.path.splitext(f)[0] for f in dinov3_filenames]
+    dino_df = dino_df.sort_values('sample_id').reset_index(drop=True)
+
+    # Validate that both DataFrames contain the same samples in the same order
+    if not (siglip_df['sample_id'].values == dino_df['sample_id'].values).all():
+        raise ValueError(
+            "Sample IDs do not match between DINOv3 and SigLIP submissions. "
+            "Cannot perform weighted ensemble."
+        )
+
+    # Build the ensemble
+    ensemble = dino_df[['sample_id']].copy()
+    for col in CFG.TARGET_COLS:
+        if col == 'Dry_Clover_g':
+            # Use DINOv3 only for Dry_Clover_g
+            ensemble[col] = dino_df[col].values
+        else:
+            ensemble[col] = (
+                CFG.W_DINOV3 * dino_df[col].values
+                + CFG.W_SIGLIP * siglip_df[col].values
+            )
+
+    # Apply mass balance constraints
+    ensemble = enforce_mass_balance(ensemble, fixed_clover=True)
+
+    # Save final submission
+    output_path = Path(CFG.OUTPUT_DIR) / 'submission.csv'
+    ensemble.to_csv(output_path, index=False)
+    print(f"Final submission saved to {output_path}")
+
+    return ensemble
+
+
+def main():
+    """Run full inference pipeline: DINOv3 inference then ensemble."""
+    dinov3_preds, dinov3_filenames = run_dinov3_inference()
+    final_submission = ensemble_predictions(dinov3_preds, dinov3_filenames)
+    print(f"\nDone! Final submission shape: {final_submission.shape}")
+    return final_submission
+
+
+if __name__ == '__main__':
+    main()

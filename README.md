@@ -8,6 +8,8 @@ It was my first kaggle competition, I learn so many things thanks to the forum a
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c)](https://pytorch.org/)
 [![Competition](https://img.shields.io/badge/Kaggle-CSIRO_Biomass-20beff)](https://www.kaggle.com/competitions/csiro-biomass)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18864491.svg)](https://doi.org/10.5281/zenodo.18864491)
+[![ORCID](https://img.shields.io/badge/ORCID-0009--0000--0448--4012-brightgreen?logo=orcid)](https://orcid.org/0009-0000-0448-4012)
 
 This repository contains the source code and documentation for my solution to the **CSIRO - Image2Biomass Prediction** challenge on Kaggle.
 
@@ -116,3 +118,28 @@ python train_siglip.py
 ```bash
 python inference.py
 ```
+
+---
+
+## Citation
+
+If you use this work, please cite:
+
+```bibtex
+@techreport{graci2026image2biomass,
+  author      = {Graci, Tom},
+  title       = {Predicting Five Key Biomass Components from Pasture Images:
+                 A Dual-Stream Ensemble Approach for the CSIRO Image2Biomass Challenge},
+  year        = {2026},
+  institution = {Zenodo},
+  doi         = {10.5281/zenodo.18864491},
+  url         = {https://doi.org/10.5281/zenodo.18864491}
+}
+```
+
+## Author
+
+**Tom Graci**  
+Independent Researcher  
+🔗 [ORCID: 0009-0000-0448-4012](https://orcid.org/0009-0000-0448-4012)  
+📄 [Technical Report (Zenodo)](https://doi.org/10.5281/zenodo.18864491)
